@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1"><!-- Begin Jekyll SEO tag v2.8.0 -->
+<title>搭建Kubernetes高可用集群 | 王鸡血</title>
+<meta name="generator" content="Jekyll v4.3.2" />
+<meta property="og:title" content="搭建Kubernetes高可用集群" />
+<meta property="og:locale" content="en_US" />
+<meta name="description" content="prepare" />
+<meta property="og:description" content="prepare" />
+<link rel="canonical" href="http://localhost:4000/kubernetes/2023/07/10/%E6%90%AD%E5%BB%BAKubernetes%E9%AB%98%E5%8F%AF%E7%94%A8%E9%9B%86%E7%BE%A4.html" />
+<meta property="og:url" content="http://localhost:4000/kubernetes/2023/07/10/%E6%90%AD%E5%BB%BAKubernetes%E9%AB%98%E5%8F%AF%E7%94%A8%E9%9B%86%E7%BE%A4.html" />
+<meta property="og:site_name" content="王鸡血" />
+<meta property="og:type" content="article" />
+<meta property="article:published_time" content="2023-07-10T20:00:00+08:00" />
+<meta name="twitter:card" content="summary" />
+<meta property="twitter:title" content="搭建Kubernetes高可用集群" />
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BlogPosting","dateModified":"2023-07-10T20:00:00+08:00","datePublished":"2023-07-10T20:00:00+08:00","description":"prepare","headline":"搭建Kubernetes高可用集群","mainEntityOfPage":{"@type":"WebPage","@id":"http://localhost:4000/kubernetes/2023/07/10/%E6%90%AD%E5%BB%BAKubernetes%E9%AB%98%E5%8F%AF%E7%94%A8%E9%9B%86%E7%BE%A4.html"},"url":"http://localhost:4000/kubernetes/2023/07/10/%E6%90%AD%E5%BB%BAKubernetes%E9%AB%98%E5%8F%AF%E7%94%A8%E9%9B%86%E7%BE%A4.html"}</script>
+<!-- End Jekyll SEO tag -->
+<link rel="stylesheet" href="/assets/main.css"><link type="application/atom+xml" rel="alternate" href="http://localhost:4000/feed.xml" title="王鸡血" /></head>
+<body><header class="site-header" role="banner">
+
+  <div class="wrapper"><a class="site-title" rel="author" href="/">王鸡血</a><nav class="site-nav">
+        <input type="checkbox" id="nav-trigger" class="nav-trigger" />
+        <label for="nav-trigger">
+          <span class="menu-icon">
+            <svg viewBox="0 0 18 15" width="18px" height="15px">
+              <path d="M18,1.484c0,0.82-0.665,1.484-1.484,1.484H1.484C0.665,2.969,0,2.304,0,1.484l0,0C0,0.665,0.665,0,1.484,0 h15.032C17.335,0,18,0.665,18,1.484L18,1.484z M18,7.516C18,8.335,17.335,9,16.516,9H1.484C0.665,9,0,8.335,0,7.516l0,0 c0-0.82,0.665-1.484,1.484-1.484h15.032C17.335,6.031,18,6.696,18,7.516L18,7.516z M18,13.516C18,14.335,17.335,15,16.516,15H1.484 C0.665,15,0,14.335,0,13.516l0,0c0-0.82,0.665-1.483,1.484-1.483h15.032C17.335,12.031,18,12.695,18,13.516L18,13.516z"/>
+            </svg>
+          </span>
+        </label>
+
+        <div class="trigger"><a class="page-link" href="/about/">About</a></div>
+      </nav></div>
+</header>
+<main class="page-content" aria-label="Content">
+      <div class="wrapper">
+        <article class="post h-entry" itemscope itemtype="http://schema.org/BlogPosting">
+
+  <header class="post-header">
+    <h1 class="post-title p-name" itemprop="name headline">搭建Kubernetes高可用集群</h1>
+    <p class="post-meta">
+      <time class="dt-published" datetime="2023-07-10T20:00:00+08:00" itemprop="datePublished">Jul 10, 2023
+      </time></p>
+  </header>
+
+  <div class="post-content e-content" itemprop="articleBody">
+    <h1 id="prepare">prepare</h1>
+
+<h2 id="操作系统prepare">操作系统prepare</h2>
+
+<p><strong>禁用swap</strong>：swapoff -a</p>
+
+<p><strong>查看主机名称</strong>：cat /proc/sys/kernel/hostname  、 hostname -i  、 uname -n</p>
+
+<p><strong>设置主机名称</strong>：hostnamectl set-hostname test-slave1</p>
+
+<p><strong>mac地址</strong>： <code class="language-plaintext highlighter-rouge">ip link | awk '{print $2}'</code></p>
+
+<p><strong>检查product_uuid是否相同</strong>: dmidecode -s system-uuid</p>
+
+<p><strong>时间同步</strong>：</p>
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>yum  -y  install  ntp  ntpdate   
+ntpdate  cn.pool.ntp.org
+</code></pre></div></div>
+
+<h2 id="dockercontainerdkubelet-安装">docker/containerd/kubelet 安装</h2>
+
+<h3 id="快速的安装docker与containerd">快速的安装docker与containerd</h3>
+
+<blockquote>
+  <p>https://docs.docker.com/engine/install/centos/</p>
+</blockquote>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>sudo yum install -y yum-utils
+sudo yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+export VERSION_STRING=3:24.0.2-1.el7
+sudo yum -y install docker-ce-$VERSION_STRING docker-ce-cli-$VERSION_STRING containerd.io docker-buildx-plugin docker-compose-plugin
+mkdir -p /etc/docker
+touch /etc/docker/daemon.json
+cat &gt; /etc/docker/daemon.json&lt;&lt;EOF
+{ "registry-mirrors": ["https://b9pmyelo.mirror.aliyuncs.com"], "exec-opts": ["native.cgroupdriver=systemd"] }
+EOF
+systemctl enable docker
+systemctl start docker 
+systemctl status docker 
+
+</code></pre></div></div>
+
+<p>在安装好docker后，containerd也相应的安装好，他们的关系如下：</p>
+<blockquote>
+  <p>可以参考一文搞懂containerd：https://www.qikqiak.com/post/containerd-usage/</p>
+</blockquote>
+
+<p><img src="http://localhost:4000/assets/k8s-ha-img1.png" alt="img" />
+同时连接docker和containerd的客户端docker、ctr也安装好了。</p>
+
+<h3 id="安装kubelet并配置镜像源">安装kubelet并配置镜像源</h3>
+<blockquote>
+  <p>https://developer.aliyun.com/mirror/kubernetes/?spm=a2c6h.25603864.0.0.344135dcps44Yf</p>
+</blockquote>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>cat &lt;&lt;EOF &gt; /etc/yum.repos.d/kubernetes.repo
+[kubernetes]
+name=Kubernetes
+baseurl=https://mirrors.aliyun.com/kubernetes/yum/repos/kubernetes-el7-x86_64/
+enabled=1
+gpgcheck=1
+repo_gpgcheck=1
+gpgkey=https://mirrors.aliyun.com/kubernetes/yum/doc/yum-key.gpg https://mirrors.aliyun.com/kubernetes/yum/doc/rpm-package-key.gpg
+EOF
+setenforce 0
+yum install -y kubelet kubeadm kubectl
+systemctl enable kubelet &amp;&amp; systemctl start kubelet
+</code></pre></div></div>
+
+<p>gpg 内部部署软件可以关闭检查。</p>
+<blockquote>
+  <p>gpgcheck=0   repo_gpgcheck=0</p>
+</blockquote>
+
+<p>在安装好后，也会自动安装好作为CRI的客户端的crictl。</p>
+
+<h3 id="containerd的配置修改尤其unix-socket">containerd的配置修改(尤其unix socket)</h3>
+
+<blockquote>
+  <p>https://forum.linuxfoundation.org/discussion/862825/kubeadm-init-error-cri-v1-runtime-api-is-not-implemented</p>
+</blockquote>
+
+<h4 id="containerd服务配置">containerd服务配置</h4>
+<p>在安装好后，需要修改containerd的配置。docker中，默认contianerd的是不使用unix socket的，需要在配置文件中修改。因为在本文笔者安装的Kubernetes版本较新，已不支持docker作为CRI，所以一定要配置containerd作为CRI(当然可以选择其他的CRI，只不过containerd是最流行的)。plugin配置修改：
+Like this, or with your favorite editor: sudo nano /etc/containerd/config.toml and comment out the line that says disabled_plugins = [“cri”].
+同时也要配置镜像加速，如sandbox的配置。可通过 containerd config default &gt; /etc/containerd/config.toml 来导出containerd全量的配置。以下为containerd修改好镜像源的config配置：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>#   Copyright 2018-2022 Docker Inc.
+
+#   Licensed under the Apache License, Version 2.0 (the "License");
+#   you may not use this file except in compliance with the License.
+#   You may obtain a copy of the License at
+
+#       http://www.apache.org/licenses/LICENSE-2.0
+
+#   Unless required by applicable law or agreed to in writing, software
+#   distributed under the License is distributed on an "AS IS" BASIS,
+#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#   See the License for the specific language governing permissions and
+#   limitations under the License.
+
+#disabled_plugins = ["cri"]
+
+#root = "/var/lib/containerd"
+#state = "/run/containerd"
+#subreaper = true
+#oom_score = 0
+
+#[grpc]
+#  address = "/run/containerd/containerd.sock"
+#  uid = 0
+#  gid = 0
+
+#[debug]
+#  address = "/run/containerd/debug.sock"
+#  uid = 0
+#  gid = 0
+#  level = "info"
+[plugins]
+  [plugins."io.containerd.grpc.v1.cri"]
+    sandbox_image = "registry.cn-hangzhou.aliyuncs.com/google_containers/pause:3.6"
+    [plugins."io.containerd.grpc.v1.cri".registry]
+      config_path = ""
+      [plugins."io.containerd.grpc.v1.cri".registry.mirrors]
+        [plugins."io.containerd.grpc.v1.cri".registry.mirrors."docker.io"]
+          endpoint = ["https://b9pmyelo.mirror.aliyuncs.com"]
+        [plugins."io.containerd.grpc.v1.cri".registry.mirrors."k8s.gcr.io"]
+          endpoint = ["registry.aliyuncs.com/google_containers"]
+</code></pre></div></div>
+
+<p>CRI的接口：https://github.com/kubernetes/kubernetes/blob/release-1.5/pkg/kubelet/api/v1alpha1/runtime/api.proto ,其中包括关于ImageService和RuntimeService</p>
+
+<p>重启containerd：</p>
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>systemctl enable containerd
+systemctl restart containerd
+systmectl status containerd
+</code></pre></div></div>
+
+<h4 id="crictl配置修改">crictl配置修改</h4>
+
+<p>crictl是cri的客户端，ctr是containerd的客户端</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>cat &gt; /etc/crictl.yaml&lt;&lt;'EOF'
+runtime-endpoint: unix:///var/run/containerd/containerd.sock
+image-endpoint: unix:///var/run/containerd/containerd.sock
+timeout: 10
+debug: true
+EOF
+</code></pre></div></div>
+
+<h4 id="containerd-可能遇到的问题">containerd 可能遇到的问题</h4>
+<blockquote>
+  <p>crictl 的配置文件是 /etc/crictl.yaml</p>
+</blockquote>
+
+<p>containerd.sock有两个，分别是：(to understand)
+/run/containerd/containerd.sock
+/run/docker/containerd/containerd.sock</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>runtime-endpoint: "unix:///run/containerd/containerd.sock"
+image-endpoint: ""
+timeout: 0
+debug: false
+pull-image-on-create: false
+disable-pull-on-run: false
+</code></pre></div></div>
+
+<p>当配置 /run/docker/containerd/containerd.sock的时候，会报错crictl images:</p>
+
+<blockquote>
+  <p>FATA[0000] validate service connection: CRI v1 image API is not implemented for endpoint “unix:///run/docker/containerd/containerd.sock”: rpc error: code = Unimplemented desc = unknown service runtime.v1.ImageService</p>
+</blockquote>
+
+<p>关于sock选择的问题：(之前默认是docker-shim，后来给去掉了)
+https://github.com/kubernetes-sigs/cri-tools/issues/1089</p>
+
+<p>https://github.com/kubernetes-sigs/cri-tools/issues/1041</p>
+
+<p>https://github.com/kubernetes-sigs/cri-tools/issues/870</p>
+
+<h1 id="kubeadm-init">kubeadm init</h1>
+<p>在control-plane初始化前，我们需要给控制面配置一个VIP来保证所有的kubelet都连接的是VIP。下面的172.16.115.80就是VIP。</p>
+
+<h2 id="keepalived配置">keepalived配置</h2>
+
+<blockquote>
+  <p>keepalived的配置： https://github.com/kubernetes/kubeadm/blob/main/docs/ha-considerations.md#options-for-software-load-balancing</p>
+</blockquote>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>${STATE} is MASTER for one and BACKUP for all other hosts, hence the virtual IP will initially be assigned to the MASTER.
+${INTERFACE} is the network interface taking part in the negotiation of the virtual IP, e.g. eth0.
+${ROUTER_ID} should be the same for all keepalived cluster hosts while unique amongst all clusters in the same subnet. Many distros pre-configure its value to 51.
+${PRIORITY} should be higher on the control plane node than on the backups. Hence 101 and 100 respectively will suffice.
+${AUTH_PASS} should be the same for all keepalived cluster hosts, e.g. 42
+${APISERVER_VIP} is the virtual IP address negotiated between the keepalived cluster hosts.
+
+export STATE=BACKUP
+export PRIORITY=100
+
+export INTERFACE=ens192
+export ROUTER_ID=51
+export AUTH_PASS=42
+export APISERVER_VIP=172.16.115.80
+
+mkdir -p /etc/keepalived
+cat&gt;/etc/keepalived/keepalived.conf&lt;&lt;EOF
+! /etc/keepalived/keepalived.conf
+! Configuration File for keepalived
+global_defs {
+    router_id LVS_DEVEL
+}
+vrrp_script check_apiserver {
+  script "/etc/keepalived/check_apiserver.sh"
+  interval 3
+  weight -2
+  fall 10
+  rise 2
+}
+
+vrrp_instance VI_1 {
+    state ${STATE}
+    interface ${INTERFACE}
+    virtual_router_id ${ROUTER_ID}
+    priority ${PRIORITY}
+    authentication {
+        auth_type PASS
+        auth_pass ${AUTH_PASS}
+    }
+    virtual_ipaddress {
+        ${APISERVER_VIP}
+    }
+    track_script {
+        check_apiserver
+    }
+}
+EOF
+
+systemctl enable keepalived
+systemctl start keepalived
+systemctl status keepalived
+
+export APISERVER_VIP=172.16.115.80
+export APISERVER_DEST_PORT=6443
+cat&gt;/etc/keepalived/check_apiserver.sh&lt;&lt;EOF
+#!/bin/sh
+
+errorExit() {
+    echo "*** $*" 1&gt;&amp;2
+    exit 1
+}
+
+curl --silent --max-time 2 --insecure https://localhost:${APISERVER_DEST_PORT}/ -o /dev/null || errorExit "Error GET https://localhost:${APISERVER_DEST_PORT}/"
+if ip addr | grep -q ${APISERVER_VIP}; then
+    curl --silent --max-time 2 --insecure https://${APISERVER_VIP}:${APISERVER_DEST_PORT}/ -o /dev/null || errorExit "Error GET https://${APISERVER_VIP}:${APISERVER_DEST_PORT}/"
+fi
+EOF
+</code></pre></div></div>
+
+<h2 id="kubernetes-ha-初始化">Kubernetes HA 初始化</h2>
+
+<blockquote>
+  <p>使用kubeadm创建集群：https://kubernetes.io/zh-cn/docs/setup/production-environment/tools/kubeadm/create-cluster-kubeadm/
+kubeadm的HA部署： https://kubernetes.io/zh-cn/docs/setup/production-environment/tools/kubeadm/high-availability/
+高可用拓扑选项：https://kubernetes.io/zh-cn/docs/setup/production-environment/tools/kubeadm/ha-topology/#stacked-etcd-topology</p>
+</blockquote>
+
+<p>官方介绍Kubernetes HA主要分为两种方式，第一种是使用具有堆叠的控制平面节点，第二种是使用外部etcd集群。第一种适用于较小规模集群，本人使用的就是第一种：</p>
+
+<blockquote>
+  <p>sudo kubeadm init –control-plane-endpoint “172.16.115.80:6443” –upload-certs –image-repository=registry.cn-hangzhou.aliyuncs.com/google_containers  –service-cidr=10.1.0.0/16 –pod-network-cidr=10.244.0.0/16</p>
+</blockquote>
+
+<p>初始化成功会有以下提示：</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>You should now deploy a pod network to the cluster.
+Run "kubectl apply -f [podnetwork].yaml" with one of the options listed at:
+  https://kubernetes.io/docs/concepts/cluster-administration/addons/
+
+Then you can join any number of worker nodes by running the following on each as root:
+
+kubeadm join 172.16.115.33:6443 --token 5hfvtc.6h86fglvh3miodtf \
+        --discovery-token-ca-cert-hash sha256:8e194e7a345a99eeb09bacaadaaad034b91868e0551bb6c01158e30ecdbdf1f3
+        
+        
+kubeadm join 172.16.115.33:6443 --token 5hfvtc.6h86fglvh3miodtf  --control-plane \
+        --discovery-token-ca-cert-hash sha256:8e194e7a345a99eeb09bacaadaaad034b91868e0551bb6c01158e30ecdbdf1f3
+</code></pre></div></div>
+<p>根据提示对node进行添加。</p>
+
+<h2 id="kubeadm-command">kubeadm command</h2>
+
+<p>kubeadm有很多命令可以直接使用，以下几个印象深刻。</p>
+<ul>
+  <li>kubeadm token create –print-join-command  ：生成加入Kubernetes的命令</li>
+</ul>
+
+<h1 id="calico安装">calico安装</h1>
+
+<p>calico直接按照官方文档安装即可:
+https://docs.tigera.io/calico/latest/getting-started/kubernetes/quickstart</p>
+
+<h2 id="calico报错解决">calico报错解决</h2>
+<p>解决了防火墙的问题，calico就不再报错了.coredns的报错在kubectl上查询不到： 应该是防火墙的问题，清空策略</p>
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>sudo iptables -P INPUT ACCEPT
+sudo iptables -P FORWARD ACCEPT
+sudo iptables -P FORWARD ACCEPT
+sudo iptables -F
+</code></pre></div></div>
+
+<h1 id="rancher部署">rancher部署</h1>
+<blockquote>
+  <p>https://ranchermanager.docs.rancher.com/zh/v2.7/getting-started/quick-start-guides/deploy-rancher-manager/helm-cli</p>
+</blockquote>
+
+<p>在helm pull 后，在Chart.yaml修改版本限制（我修改成了kubeVersion: &lt; 1.28.0-0），并配置global.cattle.psp.enabled 设置为 false</p>
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>helm install rancher ./rancher --namespace cattle-system   --set hostname=172.16.115.33.sslip.io   --set replicas=1   --set bootstrapPassword=admin --set global.cattle.psp.enabled=false
+</code></pre></div></div>
+
+<h1 id="kubernetes-dashboard">kubernetes dashboard</h1>
+<blockquote>
+  <p>https://kubernetes.io/docs/tasks/access-application-cluster/web-ui-dashboard/</p>
+</blockquote>
+
+<ol>
+  <li>拉取服务</li>
+</ol>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>kubectl apply -f https://raw.githubusercontent.com/kubernetes/dashboard/v2.7.0/aio/deploy/recommended.yaml
+</code></pre></div></div>
+
+<ol>
+  <li>修改Service的nodePort，https对外暴露 （443的端口对外暴露）</li>
+  <li>生成管理员token</li>
+</ol>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>kubectl create serviceaccount dashboard-admin -n kubernetes-dashboard
+kubectl create clusterrolebinding dashboard-admin-rb --clusterrole=cluster-admin --serviceaccount=kubernetes-dashboard:dashboard-admin
+
+cat &gt; dashboard-admin-token.yaml&lt;&lt;EOF 
+apiVersion: v1 
+kind: Secret 
+metadata: 
+  name: dashboard-admin-secret 
+  namespace: kubernetes-dashboard 
+  annotations: 
+    kubernetes.io/service-account.name: dashboard-admin 
+type: kubernetes.io/service-account-token 
+EOF
+
+kubectl apply -f dashboard-admin-token.yaml
+
+kubectl describe secret dashboard-admin-secret -n kubernetes-dashboard
+</code></pre></div></div>
+
+<ol>
+  <li>登录页面</li>
+</ol>
+
+<h1 id="dockerctrcrictl-常用命令">docker,ctr,crictl 常用命令</h1>
+
+<p>docker、 ctr、crictl常用命令</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>命令 docker ctr（containerd） crictl（kubernetes）
+命令 docker ctr（containerd） crictl（kubernetes）
+查看运行的容器 docker ps ctr task ls/ctr container ls crictl ps
+查看镜像 docker images ctr image ls crictl images
+查看容器日志 docker logs 无 crictl logs
+查看容器数据信息 docker inspect ctr container info crictl inspect
+查看容器资源 docker stats 无 crictl stats
+启动/关闭已有的容器 docker start/stop ctr task start/kill crictl start/stop
+运行一个新的容器 docker run ctr run 无（最小单元为pod）
+修改镜像标签 docker tag ctr image tag 无
+创建一个新的容器 docker create ctr container create crictl create
+导入镜像 docker load ctr image import 无
+导出镜像 docker save ctr image export 无
+删除容器 docker rm ctr container rm crictl rm
+删除镜像 docker rmi ctr image rm crictl rmi
+拉取镜像 docker pull ctr image pull ctictl pull
+推送镜像 docker push ctr image push 无
+在容器内部执行命令 docker exec 无 crictl exec
+更多命令操作，可以直接在命令行输入命令查看帮助。
+
+</code></pre></div></div>
+<p>ctr -n=k8s.io  c ls 可以看到对应的容器</p>
+
+  </div><a class="u-url" href="/kubernetes/2023/07/10/%E6%90%AD%E5%BB%BAKubernetes%E9%AB%98%E5%8F%AF%E7%94%A8%E9%9B%86%E7%BE%A4.html" hidden></a>
+</article>
+
+      </div>
+    </main><footer class="site-footer h-card">
+  <data class="u-url" href="/"></data>
+
+  <div class="wrapper">
+
+    <h2 class="footer-heading">王鸡血</h2>
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <ul class="contact-list">
+          <li class="p-name">王鸡血</li><li><a class="u-email" href="mailto:wangjc0216@outlook.com">wangjc0216@outlook.com</a></li></ul>
+      </div>
+
+      <div class="footer-col footer-col-2"><ul class="social-media-list"><li><a href="https://github.com/wangjc0216"><svg class="svg-icon"><use xlink:href="/assets/minima-social-icons.svg#github"></use></svg> <span class="username">wangjc0216</span></a></li></ul>
+</div>
+
+      <div class="footer-col footer-col-3">
+        <p>重复练习</p>
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+</body>
+
+</html>
