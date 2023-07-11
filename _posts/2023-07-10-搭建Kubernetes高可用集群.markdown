@@ -348,6 +348,107 @@ kubectl describe secret dashboard-admin-secret -n kubernetes-dashboard
 
 4. 登录页面
 
+
+
+
+
+# 部署Linux NFS Server
+
+> https://cloud.tencent.com/developer/article/1711894
+
+在一台磁盘较大的机器上安装nfs服务，安装软件包：
+> yum install rpcbind nfs-utils
+
+可通过 `yum list installed | grep nfs` 进行检查。如果是ubuntu则是`apt list --installed`来检查。
+
+在/etc/exports 写入共享路径:
+> vim /etc/exports
+/home/test 192.168.121.0/24(rw)
+
+共享文件路径 允许共享网段（共享文件可执行权限）
+
+```
+共享文件可执行权限有：
+      ro           只读访问
+      rw           读写访问
+      sync          所有数据在请求时写入共享
+      hide          在NFS共享目录中不共享其子目录
+      no_hide         共享NFS目录的子目录
+      all_squash       共享文件的UID和GID映射匿名用户anonymous，适合公用目录。
+      no_all_squash      保留共享文件的UID和GID（默认）
+      root_squash       root用户的所有请求映射成如anonymous用户一样的权限（默认）
+      no_root_squas      root用户具有根目录的完全管理访问权限
+```
+
+开启NFS服务：
+> systemctl start rpcbind nfs
+
+客户端挂载：
+> mount 192.168.121.38:/home/test/ /mnt/
+
+[option]设置nfs超时：
+> mount -t nfs -o rw,soft,intr,rsize=8192,wsize=8192,timeo=30 172.16.98.163:/root/nfs-storage net-file-sys
+
+[option]设置开机自启：
+>echo "192.168.121.38:/home/test /nfs nfs4 defaults 0 0" >> /etc/fstab
+mount -av
+
+查看共享信息：
+>showmount -e 192.168.121.38  (此处ip地址为搭建服务器主机地址)
+
+
+
+
+# 部署nfs provisioner
+
+> https://github.com/kubernetes-sigs/nfs-subdir-external-provisioner
+
+使用helm进行安装，因为网络问题，可以先把配置文件下载下来：
+
+> helm install  nfs-subdir-external-provisioner nfs-subdir-external-provisioner   -f nfs-subdir-external-provisioner/values.yaml  -nkube-system  --set nfs.server=172.16.98.163 --set nfs.path=/root/nfs-storage  --set image.repository=registry.cn-hangzhou.aliyuncs.com/zhangjinhui/nfs-subdir-external-provisioner --set image.tag=v4.0.2
+
+需要注意一下storageclass是否为default，如果不是需要加上注解:
+> storageclass.kubernetes.io/is-default-class 设置为 true
+
+通过busybox和pvc来进行验证。
+
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  finalizers:
+  - kubernetes.io/pvc-protection
+  labels:
+    app.kubernetes.io/managed-by: Helm
+  name: busybox-pvc
+spec:
+  accessModes:
+  - ReadWriteMany
+  resources:
+    requests:
+      storage: 50Gi
+  storageClassName: nfs-client
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: busybox-pod
+spec:
+  containers:
+  - name: busybox-container
+    image: busybox
+    command: ["sleep", "3600"]
+    volumeMounts:
+    - mountPath: /tmp
+      name: tmp-data
+      readOnly: true
+  volumes:
+  - name: tmp-data
+    persistentVolumeClaim:
+      claimName: busybox-pvc
+```
+发现pod启动，pv已经绑定。说明provisioner已经配置成功。
+
 # docker,ctr,crictl 常用命令
 
 docker、 ctr、crictl常用命令
