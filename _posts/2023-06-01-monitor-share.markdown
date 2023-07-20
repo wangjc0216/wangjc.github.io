@@ -143,7 +143,7 @@ categories: [observability,prometheus]
   <br />
 # 产品化
 
-- 可快速上手的监控产品，夜莺： https://github.com/ccfos/nightingale
+- 可快速上手的监控产品，夜莺： [夜莺](https://github.com/ccfos/nightingale)
   <br />
   <br />
 # Reference
